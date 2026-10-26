@@ -1,6 +1,6 @@
 # Monitor de qualidade do ar com MQ-135 e ESP32 — dados e código do TCC
 
-Repositório do trabalho de conclusão de curso **"Monitoramento da qualidade do ar em salas de aula com sensor MQ-135: caracterização metrológica e índice relativo"**, de Mateus Pinheiro Alcântara, Engenharia Eletrônica, Escola Politécnica de Pernambuco (POLI/UPE), 2026.
+Repositório do trabalho de conclusão de curso **"Sistema embarcado de baixo custo para monitoramento da qualidade do ar em ambientes de ensino com registro em nuvem"**, de Mateus Pinheiro Alcântara, Engenharia Eletrônica, Escola Politécnica de Pernambuco (POLI/UPE), 2026.
 
 O repositório traz o firmware do protótipo, os dados brutos das campanhas de bancada e de campo e os scripts que geram as análises e as figuras do artigo.
 
@@ -84,4 +84,4 @@ Código sob licença MIT (arquivo `LICENSE`). Dados, fotos e figuras sob Creativ
 
 ## Como citar
 
-ALCÂNTARA, M. P. Monitoramento da qualidade do ar em salas de aula com sensor MQ-135: caracterização metrológica e índice relativo. Trabalho de Conclusão de Curso (Engenharia Eletrônica) – Escola Politécnica de Pernambuco, Universidade de Pernambuco, Recife, 2026.
+ALCÂNTARA, M. P. **Sistema embarcado de baixo custo para monitoramento da qualidade do ar em ambientes de ensino com registro em nuvem**. Orientador: Paulo Hugo Espirito Santo Lima. 2026. Trabalho de Conclusão de Curso (Engenharia Eletrônica) – Escola Politécnica de Pernambuco, Universidade de Pernambuco, Recife, 2026.
