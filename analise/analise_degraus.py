@@ -1,5 +1,6 @@
+# Analise dos degraus de ocupacao nas salas I09 e K13: leitura dos dados, relogio pelas ancoras NTP,
+# variacao (delta) por degrau e pseudo-degraus de controle.
 import os
-# Analise dos degraus de ocupacao - I09 e K13 (protocolo fixado em 26/10, diario 4.146)
 import csv, re, statistics as st, datetime as dt, sys
 from collections import defaultdict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -46,7 +47,6 @@ def rolling_min(R, a, b, w=10):
         if best is None or mm < best[0]: best = (mm, v[i]['t'])
     return best
 
-# ---------- grade e degraus (mesmo codigo de contar_degraus.py) ----------
 import io, contextlib
 with contextlib.redirect_stdout(io.StringIO()):
     import contar_degraus as CD
@@ -89,7 +89,6 @@ def analisar(sala, R, janelas):
             for i in range(len(v) - 10):
                 if st.median([z['rs'] for z in v[i:i + 10]]) <= alvo: lat = (v[i + 5]['t'] - t0).total_seconds() / 60; break
         out.append((t0, vaz, x, rm, lat))
-    # controles
     ctl = []
     for ini, fim in janelas:
         t = ini.replace(minute=0, second=0, microsecond=0) + dt.timedelta(hours=1)

@@ -1,5 +1,5 @@
+# Figura 4 do artigo: indice Rs/R0 nas salas I09 e K13, com a grade de aulas.
 import os
-# Figura 4 do artigo: indice Rs/R0 nas duas salas com a grade (diario 4.147)
 import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from analise_degraus import *
 import matplotlib; matplotlib.use('Agg'); import matplotlib.pyplot as plt, matplotlib.dates as mdates

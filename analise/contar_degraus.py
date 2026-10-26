@@ -1,3 +1,4 @@
+# Grade de horarios das salas (A = aula, M = monitoria, . = livre) e contagem de degraus de ocupacao.
 import datetime as dt
 slots=['07:10','08:00','08:50','09:40','10:30','11:20','12:10','13:00','13:50','14:40','15:30','16:20','17:10','18:00','18:50','19:40','20:30','21:20']
 G={'B02':{0:'AAAA..AAAAAAAAAAAA',1:'AAAAAA..AA..AAAAAA',2:'AAAAAAAAAAA.AAAAAA',3:'AAAAAA..AAAAAAAAAA',4:'AAAAAAAAAAAA..AAAA'},

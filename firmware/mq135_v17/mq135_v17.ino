@@ -1,137 +1,18 @@
-/* ------------------------------------------------------------------
-   TCC - Monitor de qualidade do ar em ambientes de ensino
-   Mateus Pinheiro Alcantara - Engenharia Eletronica, POLI/UPE
+/*
+  Monitor de qualidade do ar com MQ-135 e ESP32 - firmware v17 (testado apenas em bancada)
+  TCC de Engenharia Eletronica - Escola Politecnica de Pernambuco (POLI/UPE), 2026
+  Autor: Mateus Pinheiro Alcantara
 
-   Firmware v17 - 14/10/2026 - rede da POLI (diario 4.126-4.131)
+  Le o MQ-135 (GPIO34) e a tensao de alimentacao (GPIO35) pelo ADC1, e o DHT11 (GPIO4).
+  A cada ~30 s grava na flash (LittleFS) uma linha com a media de ~1.500 amostras.
+  A cada ~6 h liga o Wi-Fi, ancora o relogio por NTP e envia as linhas pendentes,
+  em lotes, a um Web App do Google Apps Script.
+  Em relacao a v16: conecta ao ponto de acesso de sinal mais forte, registra o
+  motivo de falha da conexao e repete os envios que falharem.
 
-   O QUE MUDA EM RELACAO AO v16 (so a parte de rede; medida identica):
-     1. VARREDURA DE TODOS OS CANAIS antes de conectar. O padrao do core
-        (WIFI_FAST_SCAN) entra no PRIMEIRO ponto de acesso que acha com o
-        nome certo - nao no mais forte. Na K13 isso deu -65 a -72 dBm e
-        falhas de dia. Agora: setScanMethod(WIFI_ALL_CHANNEL_SCAN) e,
-        alem disso, varredura propria que escolhe o ponto mais forte e
-        conecta nele por BSSID e canal. Vai para o log como "# VARREDURA".
-     2. DUAS tentativas na rede da POLI antes de cair para a reserva.
-     3. MOTIVO DA FALHA no log: "# REDE FALHOU ... motivo=NN NOME". E o
-        dado que faltou em 13/10 para diagnosticar a rede.
-     4. PASSAGEM QUE FALHA E REPETIDA EM 60 MIN (ate 3 vezes), em vez de
-        esperar 6 h. Cada repeticao custa ~1 min sem medida.
-     5. Comando S mostra canal e BSSID de cada ponto de acesso.
-
-   --- texto do v16, mantido abaixo ---
-   Firmware v16-CAMPO - 08/10/2026 (13/10: rede renomeada pelo DTI para "MCU ESP32", codigo inalterado) - K13 (13 a 16/10) e B02 (19 a 22/10)
-
-   O QUE MUDA EM RELACAO AO v15-CAMPO (diario 4.115):
-     - DUAS REDES. Primeiro a rede da POLI liberada pelo DTI para o
-       dispositivo ("MCU ESP32"); se falhar, o roteamento do celular
-       ("PFC"). Com a rede da POLI funcionando, a pagina volta a mostrar
-       o aparelho vivo a cada 6 h SEM o operador ir a sala. O roteamento
-       continua de reserva: se a rede da POLI falhar na instalacao, o
-       operador liga o roteamento e confirma do mesmo jeito.
-     - A rede usada em cada passagem e gravada no log ("# REDE ...").
-     - LOCAL = "K13". Na semana da B02, trocar para "B02".
-
-   --- texto do v15-CAMPO, mantido abaixo ---
-   Firmware v15-CAMPO - preparado em 03/10/2026 para a I09 (05 a 08/10)
-
-   VERSAO DE CAMPO SEM REDE INSTITUCIONAL (diario, secao 4.90).
-   As credenciais da POLI-SMART nao chegaram. O envio usa o ROTEAMENTO
-   DO CELULAR do operador, ligado so quando ele esta perto do aparelho:
-
-     - na instalacao: primeira passagem 3 MIN apos ligar. Com o
-       roteamento ligado, a pagina confirma em minutos que a sala esta
-       gravando, e a linha de ANCORA fixa o relogio desta sala.
-     - nas outras horas: a passagem a cada 6 h tenta, nao acha a rede
-       em ~20 s, grava "# ENVIO ABORTADO - sem rede" e desiste. Nada se
-       perde - o ponteiro so avanca com confirmacao do servidor.
-     - em casa, depois da retirada: ligar no carregador com o
-       roteamento ligado; a passagem de 3 min sobe a semana inteira.
-
-   Unica diferenca para o v15 de bancada: LOCAL, rede e
-   MIN_PRIMEIRA_PASSAGEM (15 -> 3). O resto e identico ao verificado
-   em 02/10 (diario 4.81 a 4.83).
-
-   --- texto do v15 de bancada, mantido abaixo ---
-   Firmware v15 - 02/10/2026
-
-   O QUE MUDOU NA v15, e por que (diario, secoes 4.71 a 4.78):
-
-     1. MOTIVO DO REINICIO gravado na marca "# BOOT" do log. Em 01/10 o
-        aparelho reiniciou quatro vezes e travou por 8,5 h sem que
-        ninguem soubesse por que. Agora cada boot diz se foi queda de
-        tensao (brownout), watchdog, erro de execucao ou religamento.
-
-     2. WATCHDOG de 120 s. Se o laco principal parar, o aparelho
-        reinicia sozinho e volta a gravar. Em 01/10 um travamento durou
-        ate alguem ir a bancada; em campo isso seria uma sala perdida.
-
-     3. PRIMEIRA PASSAGEM 15 MIN APOS O BOOT, depois a cada 6 h. A pagina
-        de situacao confirma no mesmo dia que a sala esta gravando - e
-        um reinicio aparece na pagina em 15 min, nao em 6 h.
-
-     4. K_VCC RECALIBRADO para 5,713 (provisorio, secao 4.78). O valor
-        5,4704 fora calibrado em 17/09 com 66 mV de queda no terra da
-        protoboard embutidos; corrigido o terra em 01/10, o vcc passou a
-        ser lido ~0,21 V abaixo do real.
-
-   Rede: roteador de casa, SSID da rede de casa, enquanto estiver na bancada.
-   Para o campo: trocar LOCAL, a rede (POLI-SMART) e rodar Z antes.
-
-   v11: comando S (varredura de redes) e aviso de LOTE de teste.
-   LOTE em 5, valor de TESTE - ver aviso no boot.
-
-   v10 - 28/09: ENVIO EM LOTE PARA A NUVEM, com ponteiro de retomada.
-
-   ---------------------------------------------------------------
-   PRINCIPIO DE PROJETO, e nao e negociavel:
-
-     A FLASH E O REGISTRO DE REFERENCIA. A NUVEM E CANAL PARALELO.
-
-   Medido nesta campanha (secao 4.14 do diario):
-     serial ... 14,8 % de perda
-     flash .... 0,000 % em 96,2 h
-
-   Por isso, e ao contrario do que o pre-projeto previa:
-     - o rADIO FICA DESLIGADO durante toda a coleta;
-     - a flash NUNCA e apagada automaticamente;
-     - o ponteiro de envio so avanca quando o SERVIDOR CONFIRMA
-       quantas linhas gravou, e o numero bate com o que foi enviado.
-
-   NAO EXISTE APAGAMENTO AUTOMATICO. Foi pedido e foi recusado
-   (secao 4.26 do diario). Um Apps Script pode devolver 200 e expirar
-   antes de escrever; a planilha pode bater limite de celulas; a cota
-   pode esgotar. Em todos esses casos o ESP32 ve sucesso. Apagar a
-   flash com base nesse "sucesso" custaria um ambiente inteiro, e sao
-   tres ambientes em seis semanas, sem janela para repeticao.
-   O apagamento continua manual, por Z, depois de voce conferir a
-   contagem de linhas na planilha contra a do arquivo.
-   ---------------------------------------------------------------
-
-   POR QUE O RADIO FICA DESLIGADO DURANTE A MEDIDA (secao 4.25):
-   o radio puxa rajadas de 200 a 300 mA contra os ~130 mA do aquecedor
-   em regime. Essa rajada cai sobre o diodo Schottky do DevKit e os
-   contatos da protoboard, e afunda o VCC - que esta dentro de
-   Rs = RL*(VCC - V)/V. A medida e imune a afundamento PROPORCIONAL,
-   porque o fator se cancela na razao; o que quebra a imunidade e o
-   DESCASAMENTO TEMPORAL, ja que lerVCC() amostra uma vez, ~0,2 s
-   antes de uma janela de 30 s. Com o radio desligado o problema nao
-   existe, em vez de ser pequeno.
-
-   NTP: a janela de envio e o unico momento com rede, e e onde se
-   ancora o contador de minutos ao relogio de parede. Sem isso nao ha
-   como correlacionar o indice com a GRADE DE HORARIOS - que o
-   pre-projeto (secao 4) chama de "o resultado mais importante".
-   A ancora e gravada no proprio log como linha de comentario.
-
-   Comandos pela serial:
-     I -> informacoes do sistema de arquivos e do ponteiro de envio
-     D -> despeja todo o log pela serial
-     Z -> APAGA o log (manual, e continua sendo a unica forma)
-     E -> forca uma passagem de envio agora
-     W -> testa a conexao de rede sem enviar nada
-     R -> zera o ponteiro SEM apagar o log (reenvia tudo de proposito)
-     S -> varre as redes ao alcance e mostra nome exato, sinal e seguranca
-   ------------------------------------------------------------------ */
+  Antes de gravar, preencha os campos marcados com <<<< ... >>>>.
+  Licenca MIT.
+*/
 
 #include <math.h>
 #include <string.h>
@@ -141,102 +22,49 @@
 #include <HTTPClient.h>
 #include <time.h>
 #include <esp_wifi.h>
-#include <esp_arduino_version.h>   // ESP_ARDUINO_VERSION_MAJOR
-#include <esp_system.h>      // esp_reset_reason()
-#include <esp_task_wdt.h>    // watchdog de tarefa
+#include <esp_arduino_version.h>
+#include <esp_system.h>
+#include <esp_task_wdt.h>
 
-/* ================= CONFIGURACAO - EDITE ESTA SECAO =================
+const char *LOCAL = "TESTE";
 
-   Antes de subir, confira:
-     1. LOCAL = "TESTE" (arquivo _teste: "TESTE" para sexta 16/10; arquivo _b02: "B02")
-     2. as duas redes e senhas abaixo (POLI "MCU ESP32" e celular "PFC")
-     3. depois de subir: Z na serial, so com a I09 confirmada na planilha
-
-   A funcao configIncompleta(), mais abaixo, avisa no boot se algum
-   campo voltar a ficar por preencher. Nao mexa nela.
-   =================================================================== */
-
-// Identificacao do ambiente. MUDE A CADA SALA. Vai em toda linha enviada.
-const char *LOCAL = "TESTE";            // TESTE: sexta 16/10 na POLI | B02: 19-22/10
-
-// --- rede ---
-// Deixe ENTERPRISE em 0 para rede com senha unica (WPA2-PSK).
-// Ponha 1 se o DTI responder que a rede e WPA2-Enterprise (PEAP/MSCHAPv2).
 #define ENTERPRISE 0
 
-// REDE PRINCIPAL: rede da POLI liberada pelo DTI para o dispositivo (08/10).
-// "MCU ESP32" (UM espaco). Em 13/10 a rede se chamava "MCU ESP 32" e a 1a
-// passagem na K13 falhou; o DTI renomeou a rede para casar com este codigo.
 const char *WIFI_SSID  = "<<<< NOME DA REDE >>>>";
 
 const char *WIFI_SENHA = "<<<< SENHA DA REDE >>>>";
 
-// REDE RESERVA: roteamento do celular do operador. No telefone:
-// banda 2,4 GHz (o ESP32 nao enxerga 5 GHz) e WPA2-Personal.
 const char *WIFI_SSID2  = "<<<< NOME DA REDE RESERVA >>>>";
 const char *WIFI_SENHA2 = "<<<< SENHA DA REDE RESERVA >>>>";
-const uint32_t ESPERA_WIFI2_MS = 12000;   // reserva: espera mais curta
+const uint32_t ESPERA_WIFI2_MS = 12000;
 
 #if ENTERPRISE
-  // Peca ao DTI uma CREDENCIAL DE DISPOSITIVO. Nao use a sua pessoal:
-  // o aparelho fica uma semana sem supervisao numa sala de aula, e se
-  // for levado a credencial vai junto.
+
   const char *EAP_IDENTIDADE = "identidade";
   const char *EAP_USUARIO    = "usuario";
   const char *EAP_SENHA      = "<<<< SENHA EAP >>>>";
 #endif
 
-// URL do Web App do Google Apps Script (termina em /exec).
-// Validada em 28/09 pelo testa_nuvem.py: OK 5 e OK 60.
 const char *URL_NUVEM = "COLOQUE AQUI A URL DO WEB APP (termina em /exec)";
 
-// Chave compartilhada: o script recusa qualquer POST sem ela.
-// Nao e seguranca forte - e para evitar que um endereco publico seja
-// poluido por acidente ou por varredura.
-// TEM QUE SER IDENTICA a CHAVE_ESPERADA do nuvem_apps_script.gs.
-// Copie e cole de la, nao digite - um caractere diferente e ERRO chave.
 const char *CHAVE = "<<<< CHAVE COMPARTILHADA >>>>";
 
-// --- ritmo do envio ---
-// 6 h tambem em campo (decidido em 29/09): a pagina mostra o aparelho
-// vivo quatro vezes por dia, e cada passagem custa ~1,5 min de radio.
-const uint32_t HORAS_ENTRE_ENVIOS = 6;    // passagem automatica a cada N horas
-// Primeira passagem pouco depois do boot: confirma na pagina, no mesmo
-// dia da instalacao, que o aparelho esta gravando. Em campo cai dentro
-// das 6 h iniciais de descarte, entao nao toca em dado valido.
-const uint32_t MIN_PRIMEIRA_PASSAGEM = 3;    // CAMPO: 3 min (bancada: 15)
-// Watchdog: maior que a pior espera isolada (Wi-Fi 20 s, NTP 8 s,
-// HTTP 2 x 15 s por tentativa). E alimentado entre essas esperas.
+const uint32_t HORAS_ENTRE_ENVIOS = 6;
+
+const uint32_t MIN_PRIMEIRA_PASSAGEM = 3;
+
 const uint32_t WDT_S = 120;
-// De volta ao valor de operacao. O teste de retomada de 28/09 usou 5,
-// de proposito, para caber varios lotes numa passagem curta.
-//
-// A passagem de 28/09 mediu 5,7 s POR LOTE - custo dominado por dois
-// handshakes TLS (um no /exec, outro no googleusercontent do
-// redirecionamento). Em campo isso importa: uma semana a 30 s daria
-// 336 lotes, ou 32 min de passagem - e durante a passagem a medida
-// fica parada. Reduzir esse tempo e assunto em aberto.
-const uint16_t LOTE               = 60;   // linhas por requisicao
-const uint8_t  TENTATIVAS         = 3;    // por lote, antes de abortar a passagem
+
+const uint16_t LOTE               = 60;
+const uint8_t  TENTATIVAS         = 3;
 const uint32_t TIMEOUT_MS         = 15000;
 const uint32_t ESPERA_WIFI_MS     = 20000;
-// v17: rede principal tentada duas vezes (com nova varredura) antes da reserva.
+
 const uint8_t  TENTATIVAS_WIFI1   = 2;
-// v17: passagem que falha por rede e repetida em REPESCA_MIN, ate
-// MAX_REPESCAS vezes seguidas; depois volta ao ciclo de 6 h.
+
 const uint32_t REPESCA_MIN        = 60;
 const uint8_t  MAX_REPESCAS       = 3;
 
-/* =================== FIM DA CONFIGURACAO =================== */
-
-// Cabecalhos do WPA2-Enterprise. Ficam AQUI, e nao no topo do arquivo,
-// porque dependem do #define ENTERPRISE que esta na secao acima - o
-// pre-processador le de cima para baixo, e la em cima ENTERPRISE ainda
-// nao existe.
-//
-// Entram so quando ENTERPRISE == 1: esp_eap_client.h so existe no
-// Arduino-ESP32 3.x e esp_wpa2.h so existe no 2.x, de modo que incluir
-// o errado quebra a compilacao mesmo sem usar o recurso.
 #if ENTERPRISE
   #if ESP_ARDUINO_VERSION_MAJOR >= 3
     #include <esp_eap_client.h>
@@ -245,9 +73,6 @@ const uint8_t  MAX_REPESCAS       = 3;
   #endif
 #endif
 
-// Aviso em tempo de execucao: se algum campo ficou por preencher, o
-// firmware avisa no boot em vez de falhar em silencio na primeira
-// passagem de envio.
 bool configIncompleta() {
   return strstr(WIFI_SSID, "<<<<") || strstr(WIFI_SENHA, "<<<<") ||
          strstr(WIFI_SSID2, "<<<<") || strstr(WIFI_SENHA2, "<<<<") || strstr(CHAVE, "<<<<") ||
@@ -259,7 +84,7 @@ bool configIncompleta() {
 #define PIN_VCC  35
 
 const float    VCC_RESERVA = 4.98;
-const float    K_VCC     = 5.713;    // v15: provisorio (diario 4.78). Era 5.4704.
+const float    K_VCC     = 5.713;
 const float    VCC_MIN   = 4.00;
 const float    VCC_MAX   = 5.50;
 const uint16_t N_VCC     = 200;
@@ -272,30 +97,26 @@ const uint16_t LIM_OUT   = 100;
 
 const char *ARQ_LOG   = "/log.csv";
 const char *ARQ_BOOT  = "/boot.txt";
-const char *ARQ_PONT  = "/envio.txt";     // ponteiro de envio, em bytes
+const char *ARQ_PONT  = "/envio.txt";
 const size_t RESERVA  = 24000;
 const char *CABECALHO =
   "boot,min,adc,dp,adc_min,adc_max,n_out,n,V_no,V_sensor,Rs_kohm,t_c,ur_pct,adc_vcc,vcc,estado";
 
 uint32_t nboot = 0;
-volatile uint16_t motivo_desc = 0;   // v17: ultimo motivo de desconexao do Wi-Fi
-uint8_t  repescas = 0;               // v17: repeticoes seguidas apos falha
+volatile uint16_t motivo_desc = 0;
+uint8_t  repescas = 0;
 bool     fs_ok = false;
 bool     cheio = false;
 
-uint32_t pos_enviada = 0;       // bytes do log.csv ja confirmados na nuvem
-uint32_t prox_envio_ms = 0;     // millis() da proxima passagem automatica
-uint32_t total_enviadas = 0;    // linhas confirmadas nesta sessao
+uint32_t pos_enviada = 0;
+uint32_t prox_envio_ms = 0;
+uint32_t total_enviadas = 0;
 bool     hora_ancorada = false;
 
-// Buffer do lote. GLOBAL de proposito: a pilha da tarefa do loop() tem
-// 8 KB por padrao no Arduino-ESP32, e um buffer deste tamanho como
-// variavel local a estouraria silenciosamente.
 static char lote_buf[10240];
 
 /* ---------------- watchdog e motivo do reinicio ---------------- */
-// Sem virgulas nos textos: as marcas vao para a planilha, que separa
-// colunas por virgula.
+
 const char *motivoReset() {
   switch (esp_reset_reason()) {
     case ESP_RST_POWERON:   return "RELIGAMENTO (energia)";
@@ -312,7 +133,6 @@ const char *motivoReset() {
   }
 }
 
-// O core 2.x e o 3.x do Arduino-ESP32 tem APIs diferentes para isto.
 void iniciarWatchdog() {
 #if ESP_ARDUINO_VERSION_MAJOR >= 3
   esp_task_wdt_config_t cfg = {};
@@ -323,7 +143,7 @@ void iniciarWatchdog() {
 #else
   esp_task_wdt_init(WDT_S, true);
 #endif
-  esp_task_wdt_add(NULL);          // vigia a tarefa do loop()
+  esp_task_wdt_add(NULL);
 }
 
 inline void alimentarWatchdog() { esp_task_wdt_reset(); }
@@ -398,15 +218,14 @@ uint32_t tamanhoLog() {
 }
 
 /* ---------------- ponteiro de envio ---------------- */
-// Guardado em arquivo proprio. Se o aparelho cair no meio de uma
-// passagem, ele retoma do ultimo lote CONFIRMADO, nao do inicio.
+
 void lerPonteiro() {
   pos_enviada = 0;
   File f = LittleFS.open(ARQ_PONT, FILE_READ);
   if (f) { pos_enviada = (uint32_t)f.parseInt(); f.close(); }
   uint32_t tam = tamanhoLog();
   if (pos_enviada > tam) {
-    // O log encolheu - so acontece depois de um Z. Recomeca do zero.
+
     Serial.println("# ponteiro maior que o log (apagamento?) - zerado");
     pos_enviada = 0;
   }
@@ -418,30 +237,23 @@ void gravarPonteiro() {
 }
 
 /* ---------------- rede ---------------- */
-// v17: o driver avisa por evento quando uma tentativa de conexao cai, com
-// o codigo do motivo (201 NO_AP_FOUND, 202 AUTH_FAIL, 15 4WAY_HANDSHAKE_
-// TIMEOUT, 203 ASSOC_FAIL...). Guardado aqui e gravado no log na falha.
+
 void aoEventoWiFi(arduino_event_id_t ev, arduino_event_info_t info) {
   if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED)
     motivo_desc = (uint16_t)info.wifi_sta_disconnected.reason;
 }
 
-// Grava uma marca no log trocando virgula por ponto e virgula: a planilha
-// separa colunas por virgula.
 void gravarMarca(char *marca) {
   for (char *p = marca; *p; p++) if (*p == ',') *p = ';';
   Serial.println(marca);
   gravar(marca);
 }
 
-// Tenta uma rede e, se conectar, grava no log qual foi e o sinal.
-// Com varrer=true: varre todos os canais, escolhe o ponto de acesso MAIS
-// FORTE com esse nome e conecta nele por BSSID e canal (v17).
 bool tentarRede(const char *ssid, const char *senha, uint32_t espera, bool varrer) {
   char marca[200];
   Serial.printf("# tentando rede [%s]\n", ssid);
   WiFi.mode(WIFI_STA);
-  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);      // v17: nao o primeiro, o melhor
+  WiFi.setScanMethod(WIFI_ALL_CHANNEL_SCAN);
   WiFi.setSortMethod(WIFI_CONNECT_AP_BY_SIGNAL);
 
   uint8_t bssid[6];
@@ -540,23 +352,8 @@ void desligarWiFi() {
   delay(50);
 }
 
-// Ancora o contador de minutos no relogio de parede. Sem isto nao ha
-// correlacao possivel com a grade de horarios.
-//
-// Roda em TODA passagem, e nao so na primeira, por dois motivos:
-//
-//  1. Se a flash for apagada depois de uma ancora, a linha de ancora vai
-//     junto. Em campo o protocolo manda apagar antes de cada ambiente -
-//     e o log daquela sala ficaria SEM referencia de tempo nenhuma.
-//
-//  2. Varias ancoras ao longo da semana permitem MEDIR a deriva do
-//     millis(). O cristal do ESP32 tem tolerancia da ordem de dezenas de
-//     ppm, o que da alguns minutos em sete dias - suficiente para
-//     deslocar o inicio de uma aula na correlacao com a grade. Com duas
-//     ancoras ou mais a deriva deixa de ser suposta e passa a ser
-//     corrigivel linha a linha.
 void ancorarHora() {
-  configTime(-3 * 3600, 0, "pool.ntp.org", "a.st1.ntp.br");   // Recife, UTC-3
+  configTime(-3 * 3600, 0, "pool.ntp.org", "a.st1.ntp.br");
   struct tm ti;
   if (!getLocalTime(&ti, 8000)) {
     Serial.println("# NTP falhou - contador de minutos segue sem ancora");
@@ -570,12 +367,9 @@ void ancorarHora() {
            millis() / 60000.0, (unsigned long)nboot, LOCAL);
   Serial.println(marca);
   gravar(marca);
-  hora_ancorada = true;      // so informativo; nao impede nova ancora
+  hora_ancorada = true;
 }
 
-// Encurta uma resposta longa para o monitor serial. Sem isto, uma
-// pagina de erro do Google inunda a tela e esconde as linhas uteis -
-// foi o que aconteceu no primeiro teste de envio.
 String resumo(const String &r) {
   String t = r;
   t.replace('\n', ' ');
@@ -584,10 +378,7 @@ String resumo(const String &r) {
   return t;
 }
 
-/* ---------------- envio de um lote ----------------
-   Monta ate LOTE linhas a partir de pos_enviada, envia, e SO avanca o
-   ponteiro se o servidor confirmar o mesmo numero de linhas.
-   Devolve: 1 enviou e confirmou | 0 nada a enviar | -1 falhou  */
+/* ---------------- envio de um lote ---------------- */
 int enviarLote() {
   File f = LittleFS.open(ARQ_LOG, FILE_READ);
   if (!f) return -1;
@@ -599,14 +390,10 @@ int enviarLote() {
 
   while (n_linhas < LOTE && f.available()) {
     String linha = f.readStringUntil('\n');
-    // A posicao vem do PROPRIO arquivo, nunca de linha.length()+1: se o
-    // log terminar sem \n, a aritmetica manual passa do fim, o ponteiro
-    // fica maior que o arquivo, lerPonteiro() o zera e TUDO e reenviado.
+
     uint32_t pos_depois = f.position();
     linha.trim();
 
-    // Ultima linha ainda sendo escrita: para aqui e deixa para a proxima
-    // passagem, quando ela ja estara completa.
     if (!f.available() && linha.length() == 0) break;
 
     if (linha.length() > 0) {
@@ -624,12 +411,9 @@ int enviarLote() {
   if (n_linhas == 0) return 0;
 
   WiFiClientSecure cli;
-  // setInsecure(): nao valida o certificado do Google. Aceitavel aqui
-  // porque o conteudo enviado nao e sensivel e a chave compartilhada
-  // protege o destino. Declarar como limitacao no relatorio.
+
   cli.setInsecure();
 
-  // Cabecalho do corpo: uma linha de metadados, depois o CSV cru.
   char meta[160];
   snprintf(meta, sizeof(meta), "%s|%s|%lu|%lu|%u\n",
            CHAVE, LOCAL, (unsigned long)nboot,
@@ -640,22 +424,7 @@ int enviarLote() {
   corpo = meta;
   corpo += lote_buf;
 
-  /* -------- redirecionamento tratado A MAO --------------------------
-     O Apps Script NUNCA responde no /exec. Ele devolve 302 apontando
-     para script.googleusercontent.com/macros/echo?user_content_key=...
-     e a resposta de verdade so aparece se esse endereco for buscado
-     com GET.
-
-     O setFollowRedirects() do HTTPClient reenvia o POST para o destino
-     do redirecionamento, e o googleusercontent recusa POST com
-     "400 Bad Request" - que foi exatamente o que aconteceu em 28/09.
-     O Python nao errou porque o urllib converte POST em GET ao seguir
-     um 302, como manda a pratica corrente.
-
-     Aqui o redirecionamento e seguido explicitamente: POST no /exec,
-     le o cabecalho Location, GET nele. Sem depender do comportamento
-     da biblioteca, que varia entre versoes do core.
-     ------------------------------------------------------------------ */
+  /* -------- redirecionamento tratado A MAO ---------------- */
   HTTPClient http;
   http.setTimeout(TIMEOUT_MS);
   http.setConnectTimeout(TIMEOUT_MS);
@@ -677,7 +446,7 @@ int enviarLote() {
       Serial.printf("# lote FALHOU: http=%d sem cabecalho Location\n", codigo);
       return -1;
     }
-    // GET no destino - e aqui que a resposta do script aparece.
+
     if (!http.begin(cli, destino)) return -1;
     codigo = http.GET();
     resp = http.getString();
@@ -689,9 +458,7 @@ int enviarLote() {
     Serial.printf("# lote FALHOU: http=%d resp=%s\n", codigo, resumo(resp).c_str());
     return -1;
   }
-  // Contrato com o script: "OK <linhas_gravadas>". Qualquer outra coisa
-  // e falha, inclusive 200 com corpo vazio - que e exatamente o modo de
-  // falha silenciosa que motivou este protocolo.
+
   if (!resp.startsWith("OK ")) {
     Serial.printf("# lote RECUSADO: resp=%s\n", resumo(resp).c_str());
     return -1;
@@ -709,9 +476,7 @@ int enviarLote() {
   return 1;
 }
 
-/* ---------------- agenda da proxima passagem (v17) ----------------
-   Falhou: repete em REPESCA_MIN, ate MAX_REPESCAS vezes seguidas.
-   Deu certo, ou esgotou as repeticoes: volta ao ciclo de 6 h. */
+/* ---------------- agenda da proxima passagem (v17) ---------------- */
 void agendarProxima(bool falhou) {
   if (falhou && repescas < MAX_REPESCAS) {
     repescas++;
@@ -739,8 +504,6 @@ void passagemEnvio(bool forcada) {
                 forcada ? "forcada" : "automatica",
                 (unsigned long)(tam - pos_enviada), (unsigned long)tam);
 
-  // Marca a interrupcao da medida no proprio log. A passagem cria um
-  // vazio de alguns minutos na serie, e ele tem que estar declarado.
   char marca[120];
   snprintf(marca, sizeof(marca), "# ENVIO INICIO min=%.1f pendente=%lu bytes",
            millis() / 60000.0, (unsigned long)(tam - pos_enviada));
@@ -765,17 +528,17 @@ void passagemEnvio(bool forcada) {
       alimentarWatchdog();
       if (tent) {
         Serial.printf("# repetindo lote (tentativa %u)\n", tent + 1);
-        delay(2000UL * tent);              // recuo progressivo
+        delay(2000UL * tent);
       }
       r = enviarLote();
     }
     if (r < 0) { abortou = true; break; }
-    if (r == 0) break;                      // nada mais a enviar
+    if (r == 0) break;
     lotes_ok++;
     if (lotes_ok % 10 == 0)
       Serial.printf("# %u lotes, %lu linhas confirmadas\n",
                     lotes_ok, (unsigned long)total_enviadas);
-    delay(150);                             // folga para o Apps Script
+    delay(150);
   }
 
   desligarWiFi();
@@ -827,7 +590,7 @@ void despejar() {
     uint32_t k = 0;
     while (f.available()) {
       Serial.write(f.read());
-      if (++k % 4096 == 0) alimentarWatchdog();   // o dump leva ~1 min
+      if (++k % 4096 == 0) alimentarWatchdog();
     }
     f.close();
   }
@@ -837,11 +600,11 @@ void despejar() {
 
 void apagar() {
   LittleFS.remove(ARQ_LOG);
-  LittleFS.remove(ARQ_PONT);       // o ponteiro morre junto com o log
+  LittleFS.remove(ARQ_PONT);
   pos_enviada = 0;
   total_enviadas = 0;
   cheio = false;
-  hora_ancorada = false;           // a ancora foi apagada com o log
+  hora_ancorada = false;
   File f = LittleFS.open(ARQ_LOG, FILE_WRITE);
   if (f) { f.println(CABECALHO); f.close(); }
   Serial.println("# log apagado, recriado, e ponteiro de envio zerado");
@@ -849,14 +612,6 @@ void apagar() {
   Serial.println("# para gravar uma nova antes de comecar a coleta que vale.");
 }
 
-// Varre as redes ao alcance. Serve para duas coisas:
-//
-//  1. Resolver duvida de nome. Acento, espaco e maiuscula no SSID sao
-//     causa comum de "wifi FALHOU" com tudo aparentemente certo. Aqui o
-//     nome aparece como o radio o enxerga.
-//  2. Medir o sinal EM CADA SALA antes de instalar. Sinal fraco significa
-//     mais repeticoes de lote e mais tempo de radio ligado - que e
-//     justamente o que se quer minimizar (secao 4.25 do diario).
 void varrerRedes() {
   Serial.println("# varrendo redes ao alcance...");
   WiFi.mode(WIFI_STA);
@@ -876,12 +631,10 @@ void varrerRedes() {
         case WIFI_AUTH_WPA_PSK:         seg = "WPA-PSK  "; break;
         case WIFI_AUTH_WPA2_PSK:        seg = "WPA2-PSK "; break;
         case WIFI_AUTH_WPA_WPA2_PSK:    seg = "WPA/WPA2 "; break;
-        // WPA2-Enterprise cai no default de proposito: o nome do enum
-        // mudou entre versoes do core e citar o antigo quebra a
-        // compilacao nas novas.
+
         default:                        seg = "outra    "; break;
       }
-      // O nome vai entre colchetes para revelar espaco no inicio ou no fim.
+
       Serial.printf("# %4d  canal %2ld  %s  %s  [%s]%s\n",
                     (int)WiFi.RSSI(i), (long)WiFi.channel(i), WiFi.BSSIDstr(i).c_str(), seg, WiFi.SSID(i).c_str(),
                     WiFi.SSID(i).equals(WIFI_SSID) ? "  <== principal" : (WiFi.SSID(i).equals(WIFI_SSID2) ? "  <== reserva" : ""));
@@ -895,13 +648,6 @@ void varrerRedes() {
   Serial.println("# radio desligado");
 }
 
-// Zera o ponteiro SEM apagar o log. Ferramenta de TESTE: permite
-// reenviar um log inteiro de proposito, para exercitar o envio em
-// varios lotes sem ter que esperar horas acumulando linhas.
-//
-// Tambem serve em campo, se um envio for para a planilha errada ou se
-// linhas se perderem do lado do servidor: reenviar duplica, e duplicata
-// e removivel pelas colunas boot e min. Perda nao e.
 void zerarPonteiro() {
   pos_enviada = 0;
   total_enviadas = 0;
@@ -937,9 +683,8 @@ void setup() {
   Serial.begin(115200);
   delay(500);
 
-  // Radio desligado por padrao. So liga na passagem de envio.
   WiFi.mode(WIFI_OFF);
-  WiFi.onEvent(aoEventoWiFi, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);   // v17
+  WiFi.onEvent(aoEventoWiFi, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
 
   analogReadResolution(12);
   analogSetAttenuation(ADC_6db);
@@ -1009,7 +754,6 @@ void loop() {
   alimentarWatchdog();
   comandos();
 
-  // A passagem de envio roda ENTRE janelas, nunca dentro de uma.
   if ((int32_t)(millis() - prox_envio_ms) >= 0) passagemEnvio(false);
 
   float adc_vcc = 0;
